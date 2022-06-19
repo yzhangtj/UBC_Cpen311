@@ -1,0 +1,75 @@
+module intensity_indicator (clk, interrupt_flag, audio_data, LED);
+   //input and output declearation
+    input clk, interrupt_flag;
+    input [7:0] audio_data;
+    output logic [7:0] LED;
+  // wire declearation
+    logic [15:0] add = 0;
+    logic [8:0]  counting =0;
+    logic [7:0]  average;
+    logic [7:0]  inter_data;
+
+    logic [6:0] state;
+    logic  addition, positive_or_negative, done;
+
+    assign addition             = state[0];
+    assign positive_or_negative = state[1];
+    assign done                 = state[2];
+
+    //state declearation
+    parameter idle                          =7'b0000_000;
+    parameter determine_positive_negative   =7'b1001_000;
+    parameter positive                      =7'b0010_000;
+    parameter negative                      =7'b1011_010;
+    parameter summation                     =7'B0100_001;
+    parameter progress                      =7'B1101_000;
+    parameter finish                        =7'B0111_100;
+
+
+    always_ff @ (posedge clk) begin
+        case (state)
+        idle:   if(interrupt_flag) state <=determine_positive_negative;
+                else state <= idle;
+        
+        determine_positive_negative:
+                if (audio_data[7]) state <= negative;
+                else state <= positive;
+
+        positive: begin 
+                inter_data <= audio_data;
+                state <= summation; end
+        
+        negative: begin
+                inter_data <= ~audio_data;
+                state <= summation; end
+
+        summation:  if (counting == 9'd255) state <= finish;
+                    else state <= progress;
+
+        progress: begin
+                add <= add + inter_data; counting <=counting + 1'b1;
+                state <= idle; end
+        
+        finish: begin
+                average <= add[15:8]; add <= 0; counting <= 0;
+                state <= idle; end 
+        
+        default: state <=idle;
+
+        endcase
+    end
+
+    always @(*) begin
+        case (average)
+        if      (average[7]) LED <= 8'b11111111;
+        else if (average[6]) LED <= 8'b11111110;
+        else if (average[5]) LED <= 8'b11111100;  
+        else if (average[4]) LED <= 8'b11111000;
+        else if (average[3]) LED <= 8'b11110000;
+        else if (average[2]) LED <= 8'b11100000;
+        else if (average[1]) LED <= 8'b11000000;
+        else if (average[0]) LED <= 8'b10000000;
+        else                 LED <= 8'b00000000;
+        endcase
+    end
+endmodule  

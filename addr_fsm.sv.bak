@@ -1,0 +1,116 @@
+module addr_fsm (clk, reset, direction, address, flag_get_new_addr, flag_new_addr_out,beginning_address,end_address,flag_get_new_address_from_pico,flag_need_new_begin_end_to_pico);
+		input reset, clk, direction, flag_get_new_addr;
+		output logic [22:0] address;
+		output logic flag_new_addr_out;
+		input flag_get_new_address_from_pico;
+		input [22:0] beginning_address;
+		input [22:0] end_address;
+		output reg flag_need_new_begin_end_to_pico=1'b0;
+		logic [5:0] state;
+		logic read_addr, enable_addr;
+		logic [22:0] new_addr;
+		reg [3:0]delay_counter=4'b0000;
+		assign read_addr = state[0];
+		assign enable_addr = state[1];
+		assign flag_new_addr_out = state[2];
+		
+		parameter addr_start = 23'h0;
+		parameter addr_end = 23'h7FFFF;
+		//state
+		parameter idle           = 6'b00_0000;
+		parameter get_addr       = 6'b00_0001;
+		parameter enable_address = 6'b00_0010;
+		parameter addr_out       = 6'b00_0100;
+		parameter check_whether_need_new_address=6'b00_1000;
+		parameter check_flag_whether_get_new_address=6'b01_1000;
+		parameter change_new_begin_end_address=6'b10_0000;
+		parameter check_state=6'b11_0000;
+		parameter check_state_2=6'b11_1000;
+		
+		always_ff @ (posedge clk or posedge reset) begin
+		
+			if(reset)begin
+			              address=addr_start;
+			              state <= idle;
+			        end
+			else begin 
+				case(state)
+				
+				idle: if(flag_get_new_addr) state <= get_addr;
+				else state <= idle;
+				
+				get_addr: state <= enable_address;
+				
+				enable_address:begin
+					if(address == end_address)
+					    begin
+						flag_need_new_begin_end_to_pico=1'b1;
+						state <= check_whether_need_new_address;
+						end
+					else begin
+					address = address+1;
+					state <=addr_out;
+					end
+				                end 
+				check_whether_need_new_address:begin
+				                                
+					                            if(flag_get_new_address_from_pico)
+												begin
+												flag_need_new_begin_end_to_pico=1'b0;
+												address= beginning_address;	
+												state<=check_state_2;
+												end
+												else begin
+												flag_need_new_begin_end_to_pico=1'b1;
+												state<=check_whether_need_new_address;
+												end
+				                               end
+			/*	check_flag_whether_get_new_address:begin
+				                               if(flag_get_new_address_from_pico)
+											   state<=addr_out;
+											   else 
+					                          state<=check_flag_whether_get_new_address;
+				                             end	*/
+				check_state_2:begin
+				         address= beginning_address;
+				          if(delay_counter=4'b1111)
+					     state<=check_state;
+						 else 
+						 begin
+						 state<=check_state_2;
+                         delay_counter=delay_counter+1'b1;
+						 end
+				end	
+				check_state:begin
+				            state<=check_state;  
+				            end						 						 						   
+				addr_out: state <= idle;
+				
+				default: state <= idle;
+				
+				endcase
+			end
+		end
+		
+	/*	always_ff @ (posedge enable_addr or posedge reset) begin
+				
+				if(reset) new_addr = addr_start;
+				
+				else if (!direction) begin
+					if(address == addr_start)
+					new_addr <= addr_end;
+					else new_addr = new_addr-1;
+				end
+				
+				else begin
+					if(address == addr_end)
+						new_addr <= addr_start;
+					else new_addr = new_addr+1;
+					
+				end	
+			end
+		always_ff @ (posedge enable_addr or posedge reset) begin
+			address = new_addr;
+		end*/
+	endmodule
+		

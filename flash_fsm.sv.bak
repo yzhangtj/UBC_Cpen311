@@ -1,0 +1,124 @@
+module flash_fsm (CLK_50M, clock_22kHz, reset, pause, set_off, valid, 
+				data_in,new_addr, addr_out, read_mem, byte_enable,  data_out,interrupt_start,start_addr_from_picoblaze,end_addr_from_picoblaze,get_new_addr_from_picoblaze);
+		
+		input CLK_50M, clock_22kHz, reset, pause, set_off, valid, addr_out;	
+		input [31:0] data_in;
+		
+		output  read_mem;
+		output  [3:0] byte_enable;
+		output logic [7:0] data_out; // 16 bits in lab 3 and 8 bits in final project
+		output logic new_addr,interrupt_start;
+		// input and output for final project added here
+		input  [22:0] start_addr_from_picoblaze;
+		input [22:0] end_addr_from_picoblaze;
+		input   get_new_addr_from_picoblaze;
+	//	output  need_new_addr_to_picoblaze;
+     	// input and output for final project ended here
+
+		logic  [9:0] state;
+		logic   odd, even;
+
+		//wire declearization for final project added here
+	
+		logic odd_or_even = 1'b0;
+		logic [1:0] check_counter = 2'b00;
+		//wire declearization for final project ended here
+		
+		assign byte_enable  = 4'b1111;
+		assign read_mem 	= state [0];
+		assign new_addr 	= state[1];		
+		assign even 		= state[2];
+		assign odd 			= state[3];
+		
+		// paramter for final project
+		parameter idle      	 	= 10'b000000_0000;
+		parameter sychc_freq1   	= 10'b000001_0000;
+		parameter sychc_freq2  		= 10'b000010_0000;
+		parameter choose_odd_even 	= 10'b000011_0000;
+		parameter wait_state 		= 10'b000100_0001;
+		parameter addr_on    		= 10'b000101_0010;
+		parameter checked_addr   	= 10'b000111_0000;
+		parameter determine_odd_even= 10'b001000_0000;
+		parameter even_addr  		= 10'b001001_0100;
+		parameter odd_addr   		= 10'b001011_1000;
+		parameter check_state_1  	= 10'b001100_0000;
+		parameter check_state_2  	= 10'b001101_0000;
+	
+		
+		always_ff @ (posedge CLK_50M or posedge reset) begin
+		
+				
+					case(state)
+					idle: begin
+					  			interrupt_start=1'b0;	// interrupt from the picoblaze
+						if(set_off & !pause) state <= sychc_freq1;
+						else state <= idle;
+					end			
+					sychc_freq1: if(!clock_22kHz) state <= sychc_freq2;
+						 		 else state <= sychc_freq1;
+							 
+			        sychc_freq2: if(clock_22kHz) state <= choose_odd_even; // waiting for the sychronized frequency
+							 	 else state <= sychc_freq2;
+					
+					choose_odd_even: begin // determine the position of the audio respectively
+						        if(!odd_or_even) begin
+								state<=wait_state; end
+								else begin
+									case(check_counter )
+									2'b00: begin
+									    check_counter =check_counter +1'b1;
+										state<=check_state_1; end
+									2'b01: begin
+										check_counter =check_counter +1'b1;
+										state<=check_state_2; end
+									2'b10: begin
+									    check_counter =2'b00;
+										state<=addr_on; end
+									endcase
+								end
+                     end
+					
+							 
+					wait_state: if(!pause&valid) state <= determine_odd_even;
+							else state <= wait_state;
+					addr_on:   begin 
+					           if(addr_out) 
+					           state<= checked_addr;
+                               else 
+					           state<=addr_on; end
+
+					checked_addr:  		state<=	determine_odd_even;
+
+					determine_odd_even: if(odd_or_even) state <= odd_addr; // get the audio into the 32 bits address respectively
+							else state <= even_addr;
+					
+					even_addr:begin
+							interrupt_start=1'b1;
+					        data_out=data_in[7:0];
+							odd_or_even=~odd_or_even;
+						    state <= idle; end		
+
+					odd_addr: begin 
+							interrupt_start=1'b1;
+					        data_out=data_in[31:24];
+							odd_or_even=~odd_or_even;
+					        state <= idle; end
+
+					check_state_1: begin
+					            interrupt_start=1'b1;
+					            data_out=data_in[15:8];
+						      
+								state <= idle; end
+
+					check_state_2: begin
+					            interrupt_start=1'b1;
+								data_out=data_in[23:16];
+						        audio_sample_2<=1'b1;
+								state <= idle; end	
+
+					default: state <= idle;
+					endcase
+					
+		end
+		
+endmodule
